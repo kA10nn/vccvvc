@@ -11,7 +11,7 @@ import Files from './pages/Files';
 import Terminal from './components/Terminal';
 import Settings from './pages/Settings';
 import { checkAuth } from './store/authSlice';
-import { useWebSocket } from './hooks/useWebSocket';
+import useWebSocket from './hooks/useWebSocket';
 
 function App() {
   const dispatch = useDispatch();
