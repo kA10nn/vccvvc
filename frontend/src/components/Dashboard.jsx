@@ -14,7 +14,7 @@ import {
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
-import AgentService from '../services/AgentService';
+import AgentService from '../services/agentService';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -48,7 +48,7 @@ const Dashboard = () => {
       const [agents, tasks, activity] = await Promise.all([
         AgentService.getAgents(),
         AgentService.getTasks(),
-        AgentService.getRecentActivity()
+        AgentService.getActivity()
       ]);
       
       const onlineAgents = agents.filter(a => a.status === 'online').length;

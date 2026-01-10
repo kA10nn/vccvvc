@@ -10,12 +10,10 @@ import {
   Paper,
   Typography,
   Button,
-  IconButton,
   Tooltip,
   Alert,
   Chip,
   Divider,
-  Autocomplete,
   FormGroup,
   FormControlLabel,
   Switch,
@@ -24,14 +22,11 @@ import {
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
-  Add as AddIcon,
-  Delete as DeleteIcon,
   Info as InfoIcon,
   Code as CodeIcon,
   Terminal as TerminalIcon,
   Folder as FolderIcon,
   Security as SecurityIcon,
-  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
@@ -129,7 +124,7 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
       const data = await AgentService.getAgents();
       setAgents(data.filter(agent => agent.status === 'online'));
     } catch (error) {
-      console.error('Failed to load agents:', error);
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to load agents'), { variant: 'error' });
     }
   };
 
@@ -181,7 +176,7 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
           onSuccess();
         }
       } catch (error) {
-        enqueueSnackbar('Failed to create task', { variant: 'error' });
+        enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to create task'), { variant: 'error' });
       } finally {
         setIsLoading(false);
       }
@@ -402,7 +397,7 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
               <Button
                 type="submit"
                 variant="contained"
-                startIcon={<PlayArrow />}
+                startIcon={<PlayIcon />}
                 disabled={isLoading || !formik.isValid}
               >
                 {isLoading ? 'Creating...' : 'Execute Task'}
