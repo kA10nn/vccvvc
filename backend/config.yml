@@ -1,0 +1,52 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  enable_tls: true
+  tls_cert_path: "/app/ssl/cert.pem"
+  tls_key_path: "/app/ssl/key.pem"
+  session_secret: "change-this-in-production"
+  upload_dir: "/app/uploads"
+  max_upload_size: 104857600  # 100MB
+
+database:
+  host: "postgres"
+  port: 5432
+  name: "ares_c2"
+  user: "ares"
+  password: "KKaaTTeeNN"
+  ssl_mode: "disable"
+  max_connections: 20
+  max_idle_connections: 5
+
+redis:
+  host: "redis"
+  port: 6379
+  password: "redispass"
+  db: 0
+
+security:
+  jwt_secret: "super-secret-jwt-key-change-this"
+  api_key: "ares-api-key-2023"
+  admin_username: "admin"
+  admin_password: "admin123"
+  allowed_origins:
+    - "http://localhost:3000"
+    - "https://localhost"
+    - "https://ares.local"
+  rate_limit: 100  # requests per minute
+  enable_cors: true
+
+logging:
+  level: "info"  # debug, info, warn, error
+  format: "json"
+  output: "stdout"  # stdout, file
+  file_path: "/app/logs/ares.log"
+
+features:
+  enable_websocket: true
+  enable_file_upload: true
+  enable_multiple_operators: true
+  enable_activity_logging: true
+  auto_cleanup_old_tasks: true
+  task_retention_days: 30
+  agent_inactive_timeout: 300  # seconds
