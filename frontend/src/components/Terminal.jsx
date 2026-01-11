@@ -58,6 +58,7 @@ const Terminal = () => {
     enableBell: false,
     cursorBlink: true,
   });
+  const wsRef = useRef(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [tabValue, setTabValue] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -76,6 +77,10 @@ const Terminal = () => {
     return () => {
       if (terminal) {
         terminal.dispose();
+      }
+      if (wsRef.current) {
+        wsRef.current.close(1000, 'Terminal closed');
+        wsRef.current = null;
       }
     };
   }, [agentId]);
@@ -176,10 +181,22 @@ const Terminal = () => {
   };
 
   const connectWebSocket = (term) => {
+    if (wsRef.current) {
+      wsRef.current.close(1000, 'Reconnecting');
+      wsRef.current = null;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) {
+      enqueueSnackbar('Missing auth token for terminal connection', { variant: 'error' });
+      return;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/terminal/${agentId}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/terminal/${agentId}?token=${token}`;
     
     const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
     
     ws.onopen = () => {
       setIsConnected(true);
@@ -189,7 +206,13 @@ const Terminal = () => {
     };
     
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      let data;
+      try {
+        data = JSON.parse(event.data);
+      } catch (error) {
+        term.writeln(`\x1b[1;31mInvalid terminal message\x1b[0m\n`);
+        return;
+      }
       
       switch (data.type) {
         case 'terminal_output':
@@ -216,6 +239,7 @@ const Terminal = () => {
       setIsConnected(false);
       term.writeln('\n\x1b[1;31m✗ Terminal connection closed\x1b[0m');
       enqueueSnackbar('Terminal connection lost', { variant: 'error' });
+      wsRef.current = null;
     };
     
     ws.onerror = (error) => {
@@ -228,7 +252,7 @@ const Terminal = () => {
       const info = await AgentService.getAgent(agentId);
       setSessionInfo(info);
     } catch (error) {
-      console.error('Failed to load session info:', error);
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to load session info'), { variant: 'error' });
     }
   };
 
@@ -244,7 +268,7 @@ const Terminal = () => {
   };
 
   const sendCommand = (cmd) => {
-    if (!isConnected || !terminal) return;
+    if (!isConnected || !terminal || wsRef.current?.readyState !== WebSocket.OPEN) return;
 
     // Add to history
     const newHistory = [...commandHistory, cmd].slice(-100); // Keep last 100 commands
@@ -253,15 +277,11 @@ const Terminal = () => {
     setHistoryIndex(-1);
 
     // Send via WebSocket
-    const ws = new WebSocket(`wss://${window.location.host}/ws/terminal/${agentId}`);
-    ws.onopen = () => {
-      ws.send(JSON.stringify({
-        type: 'terminal_command',
-        command: cmd,
-        timestamp: Date.now(),
-      }));
-      ws.close();
-    };
+    wsRef.current.send(JSON.stringify({
+      type: 'terminal_command',
+      command: cmd,
+      timestamp: Date.now(),
+    }));
 
     setCommand('');
   };

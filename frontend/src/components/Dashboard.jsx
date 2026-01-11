@@ -14,7 +14,8 @@ import {
 } from '@mui/icons-material';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ChartTooltip, ResponsiveContainer } from 'recharts';
 import { useWebSocket } from '../hooks/useWebSocket';
-import AgentService from '../services/AgentService';
+import AgentService from '../services/agentService';
+import { enqueueSnackbar } from 'notistack';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -48,7 +49,7 @@ const Dashboard = () => {
       const [agents, tasks, activity] = await Promise.all([
         AgentService.getAgents(),
         AgentService.getTasks(),
-        AgentService.getRecentActivity()
+        AgentService.getActivity()
       ]);
       
       const onlineAgents = agents.filter(a => a.status === 'online').length;
@@ -73,7 +74,7 @@ const Dashboard = () => {
         return updated.length > 20 ? updated.slice(1) : updated;
       });
     } catch (error) {
-      console.error('Failed to load dashboard data:', error);
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to load dashboard data'), { variant: 'error' });
     }
   };
 

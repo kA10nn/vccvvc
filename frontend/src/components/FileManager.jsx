@@ -82,7 +82,7 @@ const FileManager = () => {
       const allFiles = results.flat();
       setFiles(allFiles);
     } catch (error) {
-      enqueueSnackbar('Failed to load files', { variant: 'error' });
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to load files'), { variant: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -93,7 +93,7 @@ const FileManager = () => {
       const data = await AgentService.getAgents();
       setAgents(data);
     } catch (error) {
-      console.error('Failed to load agents:', error);
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to load agents'), { variant: 'error' });
     }
   };
 
@@ -117,7 +117,7 @@ const FileManager = () => {
       setUploadDialogOpen(false);
       loadFiles();
     } catch (error) {
-      enqueueSnackbar('Failed to upload file', { variant: 'error' });
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to upload file'), { variant: 'error' });
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -131,7 +131,7 @@ const FileManager = () => {
       saveAs(blob, file.filename);
       enqueueSnackbar('File download started', { variant: 'success' });
     } catch (error) {
-      enqueueSnackbar('Failed to download file', { variant: 'error' });
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to download file'), { variant: 'error' });
     }
   };
 
@@ -144,7 +144,7 @@ const FileManager = () => {
       setDeleteDialogOpen(false);
       loadFiles();
     } catch (error) {
-      enqueueSnackbar('Failed to delete file', { variant: 'error' });
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to delete file'), { variant: 'error' });
     }
   };
 

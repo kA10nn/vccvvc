@@ -69,7 +69,7 @@ const Settings = () => {
       const data = await SettingsService.getSettings();
       setSettings(data);
     } catch (error) {
-      enqueueSnackbar('Failed to load settings', { variant: 'error' });
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to load settings'), { variant: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -80,7 +80,7 @@ const Settings = () => {
       const data = await SettingsService.getApiKeys();
       setApiKeys(data);
     } catch (error) {
-      console.error('Failed to load API keys:', error);
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to load API keys'), { variant: 'error' });
     }
   };
 
@@ -89,7 +89,7 @@ const Settings = () => {
       const data = await SettingsService.getWebhooks();
       setWebhooks(data);
     } catch (error) {
-      console.error('Failed to load webhooks:', error);
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to load webhooks'), { variant: 'error' });
     }
   };
 
@@ -100,7 +100,7 @@ const Settings = () => {
       enqueueSnackbar('Settings saved successfully', { variant: 'success' });
       loadSettings();
     } catch (error) {
-      enqueueSnackbar('Failed to save settings', { variant: 'error' });
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to save settings'), { variant: 'error' });
     } finally {
       setIsLoading(false);
     }
@@ -116,7 +116,7 @@ const Settings = () => {
       setShowApiKey({ ...showApiKey, [newKey.id]: true });
       enqueueSnackbar('API key created successfully', { variant: 'success' });
     } catch (error) {
-      enqueueSnackbar('Failed to create API key', { variant: 'error' });
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to create API key'), { variant: 'error' });
     }
   };
 
@@ -128,7 +128,7 @@ const Settings = () => {
       setApiKeys(apiKeys.filter(key => key.id !== id));
       enqueueSnackbar('API key deleted', { variant: 'success' });
     } catch (error) {
-      enqueueSnackbar('Failed to delete API key', { variant: 'error' });
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to delete API key'), { variant: 'error' });
     }
   };
 
