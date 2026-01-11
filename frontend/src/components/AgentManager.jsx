@@ -16,7 +16,7 @@ import {
   Computer as ComputerIcon,
   Schedule as ScheduleIcon
 } from '@mui/icons-material';
-import AgentService from '../services/AgentService';
+import AgentService from '../services/agentService';
 import TaskCreator from './TaskCreator';
 import { useSnackbar } from 'notistack';
 
@@ -50,7 +50,7 @@ const AgentManager = () => {
       const data = await AgentService.getAgents();
       setAgents(data);
     } catch (error) {
-      enqueueSnackbar('Failed to load agents', { variant: 'error' });
+      enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to load agents'), { variant: 'error' });
     }
   };
 
@@ -77,7 +77,7 @@ const AgentManager = () => {
         enqueueSnackbar('Agent deleted', { variant: 'success' });
         loadAgents();
       } catch (error) {
-        enqueueSnackbar('Failed to delete agent', { variant: 'error' });
+        enqueueSnackbar(AgentService.getErrorMessage(error, 'Failed to delete agent'), { variant: 'error' });
       }
     }
     handleMenuClose();

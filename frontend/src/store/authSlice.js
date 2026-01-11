@@ -1,8 +1,22 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
-import { jwtDecode } from 'jwt-decode';
 
 const API_URL = process.env.REACT_APP_API_URL || '/api/v1';
+
+const decodeTokenPayload = (token) => {
+  if (!token) return null;
+  const [payload] = token.split('.');
+  if (!payload) return null;
+  const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+  const padded = normalized.padEnd(normalized.length + (4 - (normalized.length % 4 || 4)), '=');
+
+  try {
+    const json = atob(padded);
+    return JSON.parse(json);
+  } catch (error) {
+    return null;
+  }
+};
 
 export const login = createAsyncThunk(
   'auth/login',
@@ -43,10 +57,9 @@ export const checkAuth = createAsyncThunk(
       throw new Error('No authentication found');
     }
     
-    // Check token expiration
     try {
-      const decoded = jwtDecode(token);
-      if (decoded.exp * 1000 < Date.now()) {
+      const decoded = decodeTokenPayload(token);
+      if (!decoded?.exp || decoded.exp * 1000 < Date.now()) {
         throw new Error('Token expired');
       }
     } catch (error) {
