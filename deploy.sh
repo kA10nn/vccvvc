@@ -33,7 +33,14 @@ check_prerequisites() {
     print_step "Checking prerequisites"
     
     command -v docker >/dev/null 2>&1 || { print_error "Docker is required"; exit 1; }
-    command -v docker-compose >/dev/null 2>&1 || { print_error "Docker Compose is required"; exit 1; }
+    if command -v docker-compose >/dev/null 2>&1; then
+        COMPOSE_CMD="docker-compose"
+    elif docker compose version >/dev/null 2>&1; then
+        COMPOSE_CMD="docker compose"
+    else
+        print_error "Docker Compose is required"
+        exit 1
+    fi
     command -v openssl >/dev/null 2>&1 || { print_error "OpenSSL is required"; exit 1; }
     
     print_success "All prerequisites met"
@@ -131,7 +138,7 @@ init_database() {
     
     mkdir -p init
     
-    cat > init/init.sql << 'EOF'
+    cat > init/postgres-init.sql << 'EOF'
 -- ARES Database Schema
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
@@ -242,10 +249,10 @@ deploy_services() {
     print_step "Building and deploying services"
     
     # Build images
-    docker-compose build --no-cache
+    ${COMPOSE_CMD} build --no-cache
     
     # Start services
-    docker-compose up -d
+    ${COMPOSE_CMD} up -d
     
     # Wait for services to be healthy
     print_step "Waiting for services to start..."
@@ -256,7 +263,7 @@ deploy_services() {
         print_success "Backend service is running"
     else
         print_error "Backend service failed to start"
-        docker-compose logs backend
+        ${COMPOSE_CMD} logs backend
         exit 1
     fi
     
@@ -278,15 +285,15 @@ print_summary() {
     echo "   Password:     $(grep ADMIN_PASSWORD .env | cut -d '=' -f2)"
     echo ""
     echo "🛠️  Management Commands:"
-    echo "   View logs:    docker-compose logs -f"
-    echo "   Stop:         docker-compose down"
-    echo "   Restart:      docker-compose restart"
-    echo "   Update:       git pull && docker-compose up -d --build"
+    echo "   View logs:    ${COMPOSE_CMD} logs -f"
+    echo "   Stop:         ${COMPOSE_CMD} down"
+    echo "   Restart:      ${COMPOSE_CMD} restart"
+    echo "   Update:       git pull && ${COMPOSE_CMD} up -d --build"
     echo ""
     echo "📁 Important Directories:"
     echo "   Uploads:      ./data/uploads"
     echo "   SSL Certs:    ./ssl"
-    echo "   Logs:         docker-compose logs [service]"
+    echo "   Logs:         ${COMPOSE_CMD} logs [service]"
     echo "=========================================="
 }
 
