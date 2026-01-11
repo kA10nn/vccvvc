@@ -1,115 +1,136 @@
-import axios from 'axios';
+import apiClient, { extractErrorMessage } from './apiClient';
 
-const API_BASE = process.env.REACT_APP_API_URL || '/api/v1';
+/**
+ * @typedef {Object} Agent
+ * @property {number} id
+ * @property {string} uuid
+ * @property {string} hostname
+ * @property {string} username
+ * @property {string} os
+ * @property {string} arch
+ * @property {string} ip_address
+ * @property {string} status
+ * @property {string} last_seen
+ */
 
-const axiosInstance = axios.create({
-  baseURL: API_BASE,
-  timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+/**
+ * @typedef {Object} Task
+ * @property {number} id
+ * @property {number} agent_id
+ * @property {string} command
+ * @property {string} arguments
+ * @property {string} status
+ * @property {string} output
+ */
 
-// Request interceptor for adding auth token
-axiosInstance.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    return config;
-  },
-  (error) => {
-    return Promise.reject(error);
-  }
-);
-
-// Response interceptor for handling errors
-axiosInstance.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
-    }
-    return Promise.reject(error);
-  }
-);
+/**
+ * @typedef {Object} FileRecord
+ * @property {number} id
+ * @property {number} agent_id
+ * @property {string} filename
+ * @property {string} file_path
+ * @property {number} file_size
+ * @property {string} uploaded_at
+ */
 
 const AgentService = {
   // Auth
-  login: (credentials) => axiosInstance.post('/auth/login', credentials),
-  
-  logout: () => axiosInstance.post('/auth/logout'),
-  
+  login: (credentials) =>
+    apiClient.post('/auth/login', credentials).then((res) => {
+      if (res.data?.token) {
+        localStorage.setItem('token', res.data.token);
+      }
+      if (res.data?.user) {
+        localStorage.setItem('user', JSON.stringify(res.data.user));
+      }
+      return res.data;
+    }),
+
+  logout: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    return Promise.resolve();
+  },
+
   // Agents
-  getAgents: () => axiosInstance.get('/agents').then(res => res.data),
-  
-  getAgent: (id) => axiosInstance.get(`/agents/${id}`).then(res => res.data),
-  
-  deleteAgent: (id) => axiosInstance.delete(`/agents/${id}`),
-  
+  /** @returns {Promise<Agent[]>} */
+  getAgents: () => apiClient.get('/agents').then((res) => res.data),
+
+  /** @returns {Promise<Agent>} */
+  getAgent: (id) => apiClient.get(`/agents/${id}`).then((res) => res.data),
+
+  deleteAgent: (id) => apiClient.delete(`/agents/${id}`),
+
   // Tasks
-  getTasks: (params = {}) => 
-    axiosInstance.get('/tasks', { params }).then(res => res.data),
-  
-  getTask: (id) => axiosInstance.get(`/tasks/${id}`).then(res => res.data),
-  
+  /** @returns {Promise<Task[]|{items: Task[], page: number, page_size: number, total: number}>} */
+  getTasks: (params = {}) =>
+    apiClient.get('/tasks', { params }).then((res) => res.data),
+
+  /** @returns {Promise<Task>} */
+  getTask: (id) => apiClient.get(`/tasks/${id}`).then((res) => res.data),
+
   createTask: (agentId, command, args = '') =>
-    axiosInstance.post(`/agents/${agentId}/tasks`, { command, args }).then(res => res.data),
-  
-  cancelTask: (id) => axiosInstance.post(`/tasks/${id}/cancel`),
-  
+    apiClient
+      .post('/tasks', { agent_id: agentId, command, arguments: args })
+      .then((res) => res.data),
+
+  cancelTask: (id) => apiClient.post(`/tasks/${id}/cancel`),
+
   // Files
   uploadFile: (agentId, file, onProgress) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('agent_id', agentId);
-    
-    return axiosInstance.post('/files/upload', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-      onUploadProgress: (progressEvent) => {
-        if (onProgress && progressEvent.total) {
-          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          onProgress(percentCompleted);
-        }
-      },
-    }).then(res => res.data);
+
+    return apiClient
+      .post('/files/upload', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        onUploadProgress: (progressEvent) => {
+          if (onProgress && progressEvent.total) {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            onProgress(percentCompleted);
+          }
+        },
+      })
+      .then((res) => res.data);
   },
-  
-  getFiles: (agentId) => 
-    axiosInstance.get(`/agents/${agentId}/files`).then(res => res.data),
-  
+
+  /** @returns {Promise<FileRecord[]>} */
+  getFiles: (agentId) =>
+    apiClient.get(`/agents/${agentId}/files`).then((res) => res.data),
+
   downloadFile: (fileId) =>
-    axiosInstance.get(`/files/${fileId}/download`, { responseType: 'blob' }),
-  
-  deleteFile: (fileId) => axiosInstance.delete(`/files/${fileId}`),
-  
+    apiClient.get(`/files/${fileId}/download`, { responseType: 'blob' }),
+
+  deleteFile: (fileId) => apiClient.delete(`/files/${fileId}`),
+
   // System
-  getSystemInfo: () => 
-    axiosInstance.get('/system/info').then(res => res.data),
-  
+  getSystemInfo: () => apiClient.get('/system/info').then((res) => res.data),
+
   getActivity: (limit = 50) =>
-    axiosInstance.get('/activity', { params: { limit } }).then(res => res.data),
-  
+    apiClient.get('/activity', { params: { limit } }).then((res) => res.data),
+
   // Commands
   executeCommand: (agentId, command) =>
-    axiosInstance.post(`/agents/${agentId}/execute`, { command }).then(res => res.data),
-  
+    apiClient.post(`/agents/${agentId}/execute`, { command }).then((res) => res.data),
+
   getShell: (agentId) =>
-    axiosInstance.get(`/agents/${agentId}/shell`).then(res => res.data),
-  
+    apiClient.get(`/agents/${agentId}/shell`).then((res) => res.data),
+
   // Settings
-  getSettings: () => axiosInstance.get('/settings').then(res => res.data),
-  
-  updateSettings: (settings) => 
-    axiosInstance.put('/settings', settings).then(res => res.data),
-  
+  getSettings: () => apiClient.get('/settings').then((res) => res.data),
+
+  updateSettings: (settings) =>
+    apiClient.put('/settings', settings).then((res) => res.data),
+
   // Health
-  healthCheck: () => axiosInstance.get('/health').then(res => res.data),
+  healthCheck: () => apiClient.get('/health').then((res) => res.data),
+
+  getErrorMessage: (error, fallback) => extractErrorMessage(error, fallback),
 };
 
 export default AgentService;
