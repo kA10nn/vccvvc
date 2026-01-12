@@ -10,11 +10,14 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -566,8 +569,20 @@ func handleTaskResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	if config.Server.MaxUploadSize > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, config.Server.MaxUploadSize)
+	}
+
 	// Parse multipart form
-	r.ParseMultipartForm(config.Server.MaxUploadSize)
+	if err := r.ParseMultipartForm(config.Server.MaxUploadSize); err != nil {
+		var maxBytesErr *multipart.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "File too large", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "Failed to parse upload", http.StatusBadRequest)
+		return
+	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
@@ -586,14 +601,17 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Agent not found", http.StatusNotFound)
 		return
 	}
-	filename := handler.Filename
+	filename := filepath.Base(handler.Filename)
 
 	// Create upload directory if it doesn't exist
-	uploadDir := fmt.Sprintf("%s/%d", config.Server.UploadDir, agent.ID)
-	os.MkdirAll(uploadDir, 0755)
+	uploadDir := filepath.Join(config.Server.UploadDir, fmt.Sprintf("%d", agent.ID))
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
+		return
+	}
 
 	// Create file on disk
-	filePath := fmt.Sprintf("%s/%s", uploadDir, filename)
+	filePath := filepath.Join(uploadDir, filename)
 	dst, err := os.Create(filePath)
 	if err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
@@ -602,7 +620,8 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	defer dst.Close()
 
 	// Copy file
-	if _, err := io.Copy(dst, file); err != nil {
+	written, err := io.Copy(dst, file)
+	if err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}
@@ -612,7 +631,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		AgentID:    agent.ID,
 		Filename:   filename,
 		FilePath:   filePath,
-		FileSize:   handler.Size,
+		FileSize:   written,
 		UploadedAt: time.Now(),
 	}
 	db.Create(&fileRecord)
@@ -620,7 +639,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":       fileRecord.ID,
 		"filename": filename,
-		"size":     handler.Size,
+		"size":     written,
 	})
 }
 
@@ -1662,16 +1681,25 @@ func setupRoutes() *mux.Router {
 func authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("Authorization")
+		fromHeader := token != ""
 		if token == "" {
 			token = r.URL.Query().Get("token")
 		}
 
-		if token == "" || !strings.HasPrefix(token, "Bearer ") {
+		if token == "" {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
-		token = strings.TrimPrefix(token, "Bearer ")
+		if fromHeader {
+			if !strings.HasPrefix(token, "Bearer ") {
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+			token = strings.TrimPrefix(token, "Bearer ")
+		} else if strings.HasPrefix(token, "Bearer ") {
+			token = strings.TrimPrefix(token, "Bearer ")
+		}
 
 		// Validate token
 		userID, err := validateToken(token)
@@ -1702,6 +1730,28 @@ func loadConfig() {
 	if config.Server.UploadDir == "" {
 		config.Server.UploadDir = "uploads"
 	}
+	config.Server.MaxUploadSize = 100 << 20
+	if maxUpload := os.Getenv("MAX_UPLOAD_SIZE"); maxUpload != "" {
+		if parsed, err := strconv.ParseInt(maxUpload, 10, 64); err == nil && parsed > 0 {
+			config.Server.MaxUploadSize = parsed
+		}
+	}
+
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins != "" {
+		for _, origin := range strings.Split(allowedOrigins, ",") {
+			trimmed := strings.TrimSpace(origin)
+			if trimmed != "" {
+				config.Security.AllowedOrigins = append(config.Security.AllowedOrigins, trimmed)
+			}
+		}
+	} else {
+		config.Security.AllowedOrigins = []string{
+			"http://localhost:3000",
+			"https://localhost",
+			"https://ares.local",
+		}
+	}
 
 	// Database configuration
 	config.Database.Host = os.Getenv("DB_HOST")
@@ -1726,6 +1776,10 @@ func initDatabase() {
 	db.AutoMigrate(&User{}, &Agent{}, &Task{}, &File{}, &Setting{}, &APIKey{}, &Webhook{})
 
 	// Create admin user if not exists
+	if config.Security.AdminUsername == "" || config.Security.AdminPassword == "" {
+		logger.Warn("Admin credentials not configured; skipping admin user creation")
+		return
+	}
 	var adminUser User
 	result := db.Where("username = ?", config.Security.AdminUsername).First(&adminUser)
 	if result.Error == gorm.ErrRecordNotFound {
