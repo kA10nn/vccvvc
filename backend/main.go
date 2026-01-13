@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -600,14 +601,17 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Agent not found", http.StatusNotFound)
 		return
 	}
-	filename := handler.Filename
+	filename := filepath.Base(handler.Filename)
 
 	// Create upload directory if it doesn't exist
-	uploadDir := fmt.Sprintf("%s/%d", config.Server.UploadDir, agent.ID)
-	os.MkdirAll(uploadDir, 0755)
+	uploadDir := filepath.Join(config.Server.UploadDir, fmt.Sprintf("%d", agent.ID))
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
+		return
+	}
 
 	// Create file on disk
-	filePath := fmt.Sprintf("%s/%s", uploadDir, filename)
+	filePath := filepath.Join(uploadDir, filename)
 	dst, err := os.Create(filePath)
 	if err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
@@ -616,7 +620,8 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	defer dst.Close()
 
 	// Copy file
-	if _, err := io.Copy(dst, file); err != nil {
+	written, err := io.Copy(dst, file)
+	if err != nil {
 		http.Error(w, "Failed to save file", http.StatusInternalServerError)
 		return
 	}
@@ -626,7 +631,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		AgentID:    agent.ID,
 		Filename:   filename,
 		FilePath:   filePath,
-		FileSize:   handler.Size,
+		FileSize:   written,
 		UploadedAt: time.Now(),
 	}
 	db.Create(&fileRecord)
@@ -634,7 +639,7 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":       fileRecord.ID,
 		"filename": filename,
-		"size":     handler.Size,
+		"size":     written,
 	})
 }
 
