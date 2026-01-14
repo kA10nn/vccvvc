@@ -79,3 +79,7 @@
 2026/01/13 19:41:17 [emerg] 1#1: host not found in upstream "backend:8080" in /etc/nginx/nginx.conf:47
 2026/01/13 19:41:21 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:147
 2026/01/13 23:12:32 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:147
+2026/01/14 01:44:21 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:147
+2026/01/14 03:47:33 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:147
+2026/01/14 05:38:11 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:147
+2026/01/14 11:02:39 [warn] 1#1: the "listen ... http2" directive is deprecated, use the "http2" directive instead in /etc/nginx/nginx.conf:147
