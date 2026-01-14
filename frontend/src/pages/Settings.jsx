@@ -28,6 +28,12 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  FormGroup,
+  FormControlLabel as MUIFormControlLabel,
 } from '@mui/material';
 import {
   Save as SaveIcon,
@@ -43,6 +49,8 @@ import {
   Code as CodeIcon,
   VpnKey as KeyIcon,
   Webhook as WebhookIcon,
+  Edit as EditIcon,
+  Visibility as VisibilityIcon,
 } from '@mui/icons-material';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
@@ -607,11 +615,120 @@ const Settings = () => {
     );
   };
 
+  const [commandTemplates, setCommandTemplates] = useState([]);
+
+  useEffect(() => {
+    loadTemplates();
+  }, []);
+
+  const loadTemplates = async () => {
+    try {
+      const data = await SettingsService.getCommandTemplates();
+      setCommandTemplates(data || []);
+    } catch (error) {
+      // ignore, not critical
+    }
+  };
+
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+
+  const handleCreateTemplate = async () => {
+    setEditingTemplate({ name: '', value: '', template: '', description: '', is_public: false });
+    setEditDialogOpen(true);
+  };
+
+  const handleOpenEdit = (tmpl) => {
+    setEditingTemplate({ ...tmpl });
+    setEditDialogOpen(true);
+  };
+
+  const handleSaveTemplate = async (updated) => {
+    try {
+      let saved;
+      if (updated.id) {
+        saved = await SettingsService.updateCommandTemplate(updated.id, updated);
+        setCommandTemplates(commandTemplates.map((t) => (t.id === saved.id ? saved : t)));
+        enqueueSnackbar('Template updated', { variant: 'success' });
+      } else {
+        saved = await SettingsService.createCommandTemplate(updated);
+        setCommandTemplates([...commandTemplates, saved]);
+        enqueueSnackbar('Template created', { variant: 'success' });
+      }
+      setEditDialogOpen(false);
+      setEditingTemplate(null);
+    } catch (error) {
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to save template'), { variant: 'error' });
+    }
+  };
+
+  const handleDeleteTemplate = async (id) => {
+    if (!window.confirm('Delete this template?')) return;
+    try {
+      await SettingsService.deleteCommandTemplate(id);
+      setCommandTemplates(commandTemplates.filter(t => t.id !== id));
+      enqueueSnackbar('Template deleted', { variant: 'success' });
+    } catch (error) {
+      enqueueSnackbar(SettingsService.getErrorMessage(error, 'Failed to delete template'), { variant: 'error' });
+    }
+  };
+
   const tabs = [
     { label: 'General', icon: <SettingsIcon />, component: <GeneralSettings /> },
     { label: 'Security', icon: <SecurityIcon />, component: <SecuritySettings /> },
     { label: 'API', icon: <KeyIcon />, component: <APISettings /> },
     { label: 'Notifications', icon: <NotificationsIcon />, component: <NotificationSettings /> },
+    { label: 'Command Templates', icon: <CodeIcon />, component: (
+      <Box>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">Command Templates</Typography>
+          <Box>
+            <Button startIcon={<AddIcon />} onClick={handleCreateTemplate}>Create Template</Button>
+          </Box>
+        </Box>
+
+        <TableContainer component={Paper}>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Command</TableCell>
+                <TableCell>Arguments</TableCell>
+                <TableCell>Created By</TableCell>
+                <TableCell align="right">Actions</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {commandTemplates.map((t) => (
+                <TableRow key={t.id}>
+                  <TableCell>{t.name}</TableCell>
+                  <TableCell>{t.value}</TableCell>
+                  <TableCell>{t.template}</TableCell>
+                  <TableCell>{t.created_by || 'system'}</TableCell>
+                  <TableCell align="right">
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => handleOpenEdit(t)}>
+                        <EditIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Delete">
+                      <IconButton size="small" onClick={() => handleDeleteTemplate(t.id)}>
+                        <DeleteIcon />
+                      </IconButton>
+                    </Tooltip>
+                    <Tooltip title="Preview">
+                      <IconButton size="small" onClick={() => { alert(t.template || '(empty)'); }}>
+                        <VisibilityIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Box>
+    ) },
   ];
 
   return (
@@ -717,6 +834,28 @@ const Settings = () => {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Edit template dialog */}
+          <Dialog open={editDialogOpen} onClose={() => { setEditDialogOpen(false); setEditingTemplate(null); }} fullWidth maxWidth="sm">
+            <DialogTitle>{editingTemplate?.id ? 'Edit Template' : 'Create Template'}</DialogTitle>
+            <DialogContent>
+              {editingTemplate && (
+                <Box sx={{ '& > *': { mb: 2 } }}>
+                  <TextField fullWidth label="Name" value={editingTemplate.name} onChange={(e) => setEditingTemplate({ ...editingTemplate, name: e.target.value })} />
+                  <TextField fullWidth label="Command (value)" value={editingTemplate.value} onChange={(e) => setEditingTemplate({ ...editingTemplate, value: e.target.value })} />
+                  <TextField fullWidth label="Arguments / Template" value={editingTemplate.template} onChange={(e) => setEditingTemplate({ ...editingTemplate, template: e.target.value })} />
+                  <TextField fullWidth label="Description" value={editingTemplate.description || ''} onChange={(e) => setEditingTemplate({ ...editingTemplate, description: e.target.value })} />
+                  <FormGroup>
+                    <MUIFormControlLabel control={<Switch checked={!!editingTemplate.is_public} onChange={(e) => setEditingTemplate({ ...editingTemplate, is_public: e.target.checked })} />} label="Public" />
+                  </FormGroup>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => { setEditDialogOpen(false); setEditingTemplate(null); }}>Cancel</Button>
+              <Button onClick={() => handleSaveTemplate(editingTemplate)} variant="contained">Save</Button>
+            </DialogActions>
+          </Dialog>
         </Grid>
       </Grid>
     </Box>

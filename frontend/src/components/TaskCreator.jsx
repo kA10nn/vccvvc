@@ -19,6 +19,7 @@ import {
   Switch,
   InputAdornment,
   LinearProgress,
+  IconButton,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon,
@@ -27,6 +28,7 @@ import {
   Terminal as TerminalIcon,
   Folder as FolderIcon,
   Security as SecurityIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { useFormik } from 'formik';
 import * as yup from 'yup';
@@ -110,6 +112,7 @@ const validationSchema = yup.object({
 const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
   const [agents, setAgents] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [selectedTemplateIdentifier, setSelectedTemplateIdentifier] = useState('');
   const [customCommands, setCustomCommands] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -128,10 +131,36 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
     }
   };
 
-  const loadCustomCommands = () => {
-    const saved = localStorage.getItem('ares_custom_commands');
-    if (saved) {
-      setCustomCommands(JSON.parse(saved));
+  const loadCustomCommands = async () => {
+    // Migrate any localStorage-stored commands to server-side templates
+    try {
+      const saved = localStorage.getItem('ares_custom_commands');
+      if (saved) {
+        const localCmds = JSON.parse(saved);
+        for (const cmd of localCmds) {
+          try {
+            await AgentService.createCommandTemplate({
+              name: cmd.name || 'custom',
+              value: cmd.value || 'cmd',
+              description: cmd.description || 'Custom command',
+              template: cmd.template || '',
+              is_public: false,
+            });
+          } catch (err) {
+            // ignore migration errors
+          }
+        }
+        localStorage.removeItem('ares_custom_commands');
+      }
+
+      const templates = await AgentService.getCommandTemplates();
+      setCustomCommands(templates || []);
+    } catch (error) {
+      // fallback to local storage if API fails
+      const saved = localStorage.getItem('ares_custom_commands');
+      if (saved) {
+        setCustomCommands(JSON.parse(saved));
+      }
     }
   };
 
@@ -158,15 +187,28 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
         
         // Save as template if requested
         if (values.saveAsTemplate && values.templateName) {
-          const newCommand = {
-            name: values.templateName,
-            value: values.command,
-            description: 'Custom command',
-            template: values.arguments,
-          };
-          const updated = [...customCommands, newCommand];
-          setCustomCommands(updated);
-          localStorage.setItem('ares_custom_commands', JSON.stringify(updated));
+          try {
+            const created = await AgentService.createCommandTemplate({
+              name: values.templateName,
+              value: values.command,
+              description: 'Custom command',
+              template: values.arguments,
+              is_public: false,
+            });
+            const updated = [...customCommands, created];
+            setCustomCommands(updated);
+          } catch (err) {
+            // fallback to storing locally if API fails
+            const newCommand = {
+              name: values.templateName,
+              value: values.command,
+              description: 'Custom command',
+              template: values.arguments,
+            };
+            const updated = [...customCommands, newCommand];
+            setCustomCommands(updated);
+            localStorage.setItem('ares_custom_commands', JSON.stringify(updated));
+          }
         }
         
         enqueueSnackbar('Task created successfully', { variant: 'success' });
@@ -183,13 +225,31 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
     },
   });
 
-  const handleTemplateSelect = (template) => {
-    setSelectedTemplate(template);
-    formik.setValues({
-      ...formik.values,
-      command: template.value,
-      arguments: template.template || '',
-    });
+  const handleTemplateSelect = (identifier) => {
+    // identifier is either 'builtin:<value>' or 'template:<id>'
+    setSelectedTemplateIdentifier(identifier || '');
+
+    if (!identifier) {
+      setSelectedTemplate(null);
+      formik.setValues({ ...formik.values, command: '', arguments: '' });
+      return;
+    }
+
+    if (identifier.startsWith('builtin:')) {
+      const val = identifier.split(':')[1];
+      const template = COMMAND_TEMPLATES.find((t) => t.value === val);
+      setSelectedTemplate(template || null);
+      formik.setValues({ ...formik.values, command: template?.value || '', arguments: template?.template || '' });
+      return;
+    }
+
+    if (identifier.startsWith('template:')) {
+      const id = parseInt(identifier.split(':')[1], 10);
+      const template = customCommands.find((t) => t.id === id);
+      setSelectedTemplate(template || null);
+      formik.setValues({ ...formik.values, command: template?.value || '', arguments: template?.template || '' });
+      return;
+    }
   };
 
   const handleQuickCommand = (cmd, args = '') => {
@@ -298,36 +358,51 @@ const TaskCreator = ({ agentId: propAgentId, onSuccess }) => {
           <FormControl fullWidth size="small">
             <InputLabel>Command Type</InputLabel>
             <Select
-              value={selectedTemplate?.value || ''}
-              onChange={(e) => {
-                const template = [...COMMAND_TEMPLATES, ...customCommands]
-                  .find(t => t.value === e.target.value);
-                handleTemplateSelect(template);
-              }}
+              value={selectedTemplateIdentifier || ''}
+              onChange={(e) => handleTemplateSelect(e.target.value)}
               label="Command Type"
             >
               <MenuItem value="">
                 <em>Custom Command</em>
               </MenuItem>
-              
+
               <Divider>Built-in Commands</Divider>
               {COMMAND_TEMPLATES.map((template) => (
-                <MenuItem key={template.value} value={template.value}>
+                <MenuItem key={template.value} value={`builtin:${template.value}`}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     {template.icon}
                     {template.name}
                   </Box>
                 </MenuItem>
               ))}
-              
+
               {customCommands.length > 0 && (
                 <>
                   <Divider>Custom Commands</Divider>
-                  {customCommands.map((template, index) => (
-                    <MenuItem key={`custom-${index}`} value={template.value}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <CodeIcon fontSize="small" />
-                        {template.name}
+                  {customCommands.map((template) => (
+                    <MenuItem key={`custom-${template.id}`} value={`template:${template.id}`}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'space-between', width: '100%' }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <CodeIcon fontSize="small" />
+                          {template.name}
+                        </Box>
+                        <Box>
+                          <Tooltip title="Delete template">
+                            <IconButton size="small" onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!window.confirm('Delete this template?')) return;
+                              try {
+                                await AgentService.deleteCommandTemplate(template.id);
+                                setCustomCommands(customCommands.filter(t => t.id !== template.id));
+                                enqueueSnackbar('Template deleted', { variant: 'success' });
+                              } catch (err) {
+                                enqueueSnackbar('Failed to delete template', { variant: 'error' });
+                              }
+                            }}>
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        </Box>
                       </Box>
                     </MenuItem>
                   ))}

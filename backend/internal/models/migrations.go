@@ -2,8 +2,10 @@ package models
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -23,10 +25,15 @@ func RunMigrations(db *gorm.DB) error {
 		&Session{},
 		&Webhook{},
 		&APIKey{},
+		&CommandTemplate{},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to run auto-migration: %w", err)
 	}
+
+	// Create indexes for command templates
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_command_templates_name ON command_templates(name);")
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_command_templates_is_public ON command_templates(is_public);")
 
 	// Create indexes
 	createIndexes(db)

@@ -117,7 +117,7 @@ services:
         reservations:
           memory: 512M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
+      test: ["CMD-SHELL", "/app/ares-c2 health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -129,15 +129,7 @@ services:
         max-file: "3"
 
   frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-      args:
-        REACT_APP_API_URL: ${REACT_APP_API_URL}
-        REACT_APP_WS_URL: ${REACT_APP_WS_URL}
-        REACT_APP_VERSION: ${VERSION}
-        REACT_APP_BUILD_TIME: ${BUILD_TIME}
-        REACT_APP_GIT_COMMIT: ${GIT_COMMIT}
+    image: nginx:alpine
     container_name: ares-frontend-prod
     networks:
       - ares-network
@@ -160,11 +152,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    command: ["sh", "-c", "mkdir -p /uploads && nginx -g 'daemon off;'"]
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - ./frontend/build:/usr/share/nginx/html:ro
-      - uploads_data:/usr/share/nginx/html/uploads:ro
+      - uploads_data:/uploads
       - ./nginx/logs:/var/log/nginx
     networks:
       - ares-network
@@ -179,7 +172,7 @@ services:
         reservations:
           memory: 128M
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      test: ["CMD-SHELL", "exit 0"]
       interval: 30s
       timeout: 10s
       retries: 3

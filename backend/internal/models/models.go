@@ -1,6 +1,8 @@
 package models
 
 import (
+	"fmt"
+	"math/rand"
 	"time"
 )
 
@@ -109,6 +111,19 @@ type Webhook struct {
 	IsActive    bool      `gorm:"default:true" json:"is_active"`
 	LastTrigger time.Time `json:"last_trigger"`
 	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// CommandTemplate represents reusable command templates/scripts
+type CommandTemplate struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Name        string    `gorm:"size:100;not null" json:"name"`
+	Value       string    `gorm:"size:100;not null" json:"value"` // command type or identifier (eg. 'cmd', 'sysinfo')
+	Description string    `gorm:"size:255" json:"description"`
+	Template    string    `gorm:"type:text" json:"template"` // default arguments or payload
+	CreatedBy   string    `gorm:"size:50" json:"created_by"`
+	IsPublic    bool      `gorm:"default:false" json:"is_public"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"autoUpdateTime" json:"updated_at"`
 }
 
 // APIKey represents API keys for external integration

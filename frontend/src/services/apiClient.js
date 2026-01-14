@@ -1,4 +1,5 @@
-import axios from 'axios';
+let axios = require('axios');
+if (axios && axios.default) axios = axios.default;
 
 const API_BASE = process.env.REACT_APP_API_URL || '/api/v1';
 

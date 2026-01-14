@@ -10,10 +10,8 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"os/signal"
@@ -32,6 +30,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	models "ares-c2/internal/models"
 )
 
 //go:embed frontend/build/*
@@ -575,8 +575,8 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 
 	// Parse multipart form
 	if err := r.ParseMultipartForm(config.Server.MaxUploadSize); err != nil {
-		var maxBytesErr *multipart.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
+		// Some Go versions don't expose a MaxBytesError type; check message text
+		if strings.Contains(err.Error(), "request body too large") || strings.Contains(err.Error(), "multipart: message too large") {
 			http.Error(w, "File too large", http.StatusRequestEntityTooLarge)
 			return
 		}
@@ -1185,6 +1185,128 @@ func handleListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(keys)
 }
 
+// Command template handlers
+func handleListCommandTemplates(w http.ResponseWriter, r *http.Request) {
+	var templates []models.CommandTemplate
+	if err := db.Order("id asc").Find(&templates).Error; err != nil {
+		http.Error(w, "Failed to load command templates", http.StatusInternalServerError)
+		return
+	}
+	json.NewEncoder(w).Encode(templates)
+}
+
+func handleCreateCommandTemplate(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		Name        string `json:"name"`
+		Value       string `json:"value"`
+		Description string `json:"description"`
+		Template    string `json:"template"`
+		IsPublic    bool   `json:"is_public"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if payload.Name == "" || payload.Value == "" {
+		http.Error(w, "Missing name or value", http.StatusBadRequest)
+		return
+	}
+
+	// try to get creating user
+	createdBy := "system"
+	if v := r.Context().Value(authUserIDKey); v != nil {
+		if uid, ok := v.(uint); ok && uid != 0 {
+			var user User
+			if err := db.First(&user, uid).Error; err == nil {
+				createdBy = user.Username
+			}
+		}
+	}
+
+	template := models.CommandTemplate{
+		Name:        payload.Name,
+		Value:       payload.Value,
+		Description: payload.Description,
+		Template:    payload.Template,
+		IsPublic:    payload.IsPublic,
+		CreatedBy:   createdBy,
+		CreatedAt:   time.Now(),
+	}
+
+	if err := db.Create(&template).Error; err != nil {
+		http.Error(w, "Failed to save template", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(template)
+}
+
+func handleUpdateCommandTemplate(w http.ResponseWriter, r *http.Request) {
+	idParam := mux.Vars(r)["id"]
+	id, err := strconv.ParseUint(idParam, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid template id", http.StatusBadRequest)
+		return
+	}
+
+	var payload struct {
+		Name        string `json:"name"`
+		Value       string `json:"value"`
+		Description string `json:"description"`
+		Template    string `json:"template"`
+		IsPublic    *bool  `json:"is_public"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	var tmpl models.CommandTemplate
+	if err := db.First(&tmpl, id).Error; err != nil {
+		http.Error(w, "Template not found", http.StatusNotFound)
+		return
+	}
+
+	if payload.Name != "" {
+		tmpl.Name = payload.Name
+	}
+	if payload.Value != "" {
+		tmpl.Value = payload.Value
+	}
+	if payload.Description != "" {
+		tmpl.Description = payload.Description
+	}
+	// allow empty string to clear template
+	tmpl.Template = payload.Template
+	if payload.IsPublic != nil {
+		tmpl.IsPublic = *payload.IsPublic
+	}
+
+	if err := db.Save(&tmpl).Error; err != nil {
+		http.Error(w, "Failed to update template", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(tmpl)
+}
+
+func handleDeleteCommandTemplate(w http.ResponseWriter, r *http.Request) {
+	idParam := mux.Vars(r)["id"]
+	id, err := strconv.ParseUint(idParam, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid template id", http.StatusBadRequest)
+		return
+	}
+
+	result := db.Delete(&models.CommandTemplate{}, id)
+	if result.Error != nil {
+		http.Error(w, "Failed to delete template", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func handleCreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
 		Name string `json:"name"`
@@ -1552,6 +1674,10 @@ func handleImportData(w http.ResponseWriter, r *http.Request) {
 		if err := tx.Where("1 = 1").Delete(&Webhook{}).Error; err != nil {
 			return err
 		}
+		// Also clear command templates to match import behavior
+		if err := tx.Where("1 = 1").Delete(&models.CommandTemplate{}).Error; err != nil {
+			return err
+		}
 
 		for key, value := range payload.Settings {
 			valueBytes, err := json.Marshal(value)
@@ -1648,6 +1774,13 @@ func setupRoutes() *mux.Router {
 	protected.HandleFunc("/settings/api-keys", handleListAPIKeys).Methods("GET")
 	protected.HandleFunc("/settings/api-keys", handleCreateAPIKey).Methods("POST")
 	protected.HandleFunc("/settings/api-keys/{id}", handleDeleteAPIKey).Methods("DELETE")
+
+	// Command templates (persistent custom scripts)
+	protected.HandleFunc("/settings/command-templates", handleListCommandTemplates).Methods("GET")
+	protected.HandleFunc("/settings/command-templates", handleCreateCommandTemplate).Methods("POST")
+	protected.HandleFunc("/settings/command-templates/{id}", handleUpdateCommandTemplate).Methods("PUT")
+	protected.HandleFunc("/settings/command-templates/{id}", handleDeleteCommandTemplate).Methods("DELETE")
+
 	protected.HandleFunc("/settings/webhooks", handleListWebhooks).Methods("GET")
 	protected.HandleFunc("/settings/webhooks", handleCreateWebhook).Methods("POST")
 	protected.HandleFunc("/settings/webhooks/{id}", handleUpdateWebhook).Methods("PUT")
@@ -1814,6 +1947,21 @@ func initLogger() {
 }
 
 func main() {
+	// Support a lightweight "health" subcommand for container healthchecks.
+	// This will perform an HTTP GET against the running server and return
+	// exit status 0 on success, non-zero on failure.
+	if len(os.Args) > 1 && os.Args[1] == "health" {
+		resp, err := http.Get("http://127.0.0.1:8080/health")
+		if err != nil {
+			os.Exit(1)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	serverStarted = time.Now()
 	initLogger()
 	loadConfig()

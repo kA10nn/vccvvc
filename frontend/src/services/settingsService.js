@@ -25,6 +25,12 @@ const SettingsService = {
 
   deleteWebhook: (id) => apiClient.delete(`/settings/webhooks/${id}`),
 
+  // Command templates
+  getCommandTemplates: () => apiClient.get('/settings/command-templates').then((res) => res.data),
+  createCommandTemplate: (data) => apiClient.post('/settings/command-templates', data).then((res) => res.data),
+  updateCommandTemplate: (id, data) => apiClient.put(`/settings/command-templates/${id}`, data).then((res) => res.data),
+  deleteCommandTemplate: (id) => apiClient.delete(`/settings/command-templates/${id}`),
+
   // System
   getSystemInfo: () => apiClient.get('/settings/system-info').then((res) => res.data),
 
@@ -45,6 +51,12 @@ const SettingsService = {
   getLogs: (params) => apiClient.get('/settings/logs', { params }).then((res) => res.data),
 
   clearLogs: () => apiClient.delete('/settings/logs'),
+
+  // Command templates
+  getCommandTemplates: () => apiClient.get('/settings/command-templates').then((res) => res.data),
+  createCommandTemplate: (data) => apiClient.post('/settings/command-templates', data).then((res) => res.data),
+  updateCommandTemplate: (id, data) => apiClient.put(`/settings/command-templates/${id}`, data).then((res) => res.data),
+  deleteCommandTemplate: (id) => apiClient.delete(`/settings/command-templates/${id}`),
 
   // Export/Import
   exportData: () => apiClient.get('/settings/export', { responseType: 'blob' }),

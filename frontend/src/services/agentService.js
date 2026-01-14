@@ -127,6 +127,11 @@ const AgentService = {
   updateSettings: (settings) =>
     apiClient.put('/settings', settings).then((res) => res.data),
 
+  // Command templates (persistent custom scripts)
+  getCommandTemplates: () => apiClient.get('/settings/command-templates').then((res) => res.data),
+  createCommandTemplate: (payload) => apiClient.post('/settings/command-templates', payload).then((res) => res.data),
+  deleteCommandTemplate: (id) => apiClient.delete(`/settings/command-templates/${id}`),
+
   // Health
   healthCheck: () => apiClient.get('/health').then((res) => res.data),
 
